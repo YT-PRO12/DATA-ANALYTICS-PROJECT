@@ -16,6 +16,8 @@ jobs:
           python-version: '3.12'
       - name: Check Python scripts
         run: python -m compileall -q scripts
+      - name: Run offline notebook unit tests
+        run: python -m unittest discover -s scripts -p 'test_*.py'
       - name: Check saved notebook structure
         run: python scripts/validate_notebook.py
       - name: Inventory committed notebook cells
