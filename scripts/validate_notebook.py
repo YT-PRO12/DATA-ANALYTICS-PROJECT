@@ -1,4 +1,4 @@
-"""Validate the committed notebook structure without executing data-dependent cells."""
+"""Validate notebook structure offline without running data-dependent cells."""
 import json
 from pathlib import Path
 
@@ -6,21 +6,44 @@ ROOT = Path(__file__).resolve().parents[1]
 NOTEBOOK = ROOT / "DATA ANALYTICS PROJECT.ipynb"
 
 
-def main():
-    notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
-    assert notebook.get("nbformat") == 4, "Expected notebook format 4"
+def validate_notebook(path=NOTEBOOK):
+    """Validate required Jupyter v4 structure; return the number of cells."""
+    notebook = json.loads(Path(path).read_text(encoding="utf-8"))
+    if notebook.get("nbformat") != 4:
+        raise ValueError("Expected Jupyter notebook major version 4")
+
     cells = notebook.get("cells")
-    assert isinstance(cells, list) and cells, "Notebook must contain cells"
-    assert any(cell.get("cell_type") == "code" for cell in cells)
+    if not isinstance(cells, list) or not cells:
+        raise ValueError("Notebook must contain a nonempty cell list")
 
+    code_count = 0
+    ids = set()
     for index, cell in enumerate(cells):
-        assert cell.get("cell_type") in {"code", "markdown", "raw"}, index
-        assert isinstance(cell.get("source"), (str, list)), index
+        if not isinstance(cell, dict) or cell.get("cell_type") not in {"code", "markdown", "raw"}:
+            raise ValueError(f"Invalid cell type at index {index}")
+        source = cell.get("source")
+        if not isinstance(source, (str, list)) or (
+            isinstance(source, list) and not all(isinstance(line, str) for line in source)
+        ):
+            raise ValueError(f"Invalid source at cell {index}")
+        cell_id = cell.get("id")
+        if cell_id is not None:
+            if not isinstance(cell_id, str) or not cell_id or cell_id in ids:
+                raise ValueError(f"Invalid or duplicate cell ID at index {index}")
+            ids.add(cell_id)
         if cell["cell_type"] == "code":
-            assert isinstance(cell.get("outputs"), list), index
-            assert "execution_count" in cell, index
+            code_count += 1
+            if not isinstance(cell.get("outputs"), list) or "execution_count" not in cell:
+                raise ValueError(f"Invalid code-cell execution metadata at index {index}")
 
-    print(f"PASS: notebook structure ({len(cells)} cells); datasets not executed")
+    if code_count == 0:
+        raise ValueError("Notebook must contain code cells")
+    return len(cells)
+
+
+def main():
+    total = validate_notebook()
+    print(f"PASS: notebook structure ({total} cells); datasets not executed")
 
 
 if __name__ == "__main__":
